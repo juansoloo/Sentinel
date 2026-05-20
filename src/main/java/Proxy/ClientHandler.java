@@ -13,6 +13,80 @@ public class ClientHandler implements Runnable{
         this.clientSocket = clientSocket;
     }
 
+    public boolean endsWithHeaderTerminator(byte[] headerInput) {
+        if (headerInput.length < 4) {
+            return false;
+        } else return headerInput[headerInput.length - 4] == 13
+                && headerInput[headerInput.length - 3] == 10
+                && headerInput[headerInput.length - 2] == 13
+                && headerInput[headerInput.length - 1] == 10;
+    }
+
+    public void handlerServerResponse(InputStream serverInput, OutputStream clientOutput) throws IOException {
+        ByteArrayOutputStream headerBytes = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        boolean headerComplete = false;
+        int bytesRead;
+
+        while(!headerComplete) {
+            int data = serverInput.read();
+            if (data == -1) {
+                System.out.println("Server ended unexpectedly.");
+                return;
+            }
+
+            headerBytes.write(data);
+            byte[] byteData = headerBytes.toByteArray();
+
+            if (endsWithHeaderTerminator(byteData)) {
+                headerComplete = true;
+            }
+        }
+
+        String headerString = headerBytes.toString(StandardCharsets.ISO_8859_1);
+        List<HttpHeader> responseHeaders = new ArrayList<>();
+
+        String[] lines = headerString.split("\r\n");
+
+        for (String line : lines ) {
+            if (line.isEmpty()) {
+                continue;
+            }
+
+            if (line.startsWith("HTTP/")) {
+                String[] statusParts = line.split(" ", 3);
+
+                String version = statusParts[0];
+                String statusCode = statusParts[1];
+                String reasonPhrase = statusParts.length > 2 ? statusParts[2] : "";
+
+                System.out.println("HTTP Version: " + version);
+                System.out.println("Status Code: " + statusCode);
+                System.out.println("Reason Phrase: " + reasonPhrase);
+            } else {
+                int colonIndex = line.indexOf(":");
+
+                if (colonIndex == -1) {
+                    continue;
+                }
+
+                String name = line.substring(0, colonIndex).trim();
+                String value = line.substring(colonIndex+ 1).trim();
+
+                responseHeaders.add(new HttpHeader(name, value));
+                System.out.println(name + ": " + value);
+            }
+        }
+
+        clientOutput.write(headerBytes.toByteArray());
+
+        while ((bytesRead = serverInput.read(buffer)) != -1) {
+            clientOutput.write(buffer, 0, bytesRead);
+        }
+
+        clientOutput.flush();
+    }
+
     public void forwardRequest(String host, int targetPort, String path, List<String> headers, String HTTPType,
                                String method, OutputStream clientOutput) throws IOException {
         try (Socket serverSocket = new Socket(host, targetPort)) {
@@ -22,13 +96,13 @@ public class ClientHandler implements Runnable{
             InputStream serverInput = serverSocket.getInputStream();
 
             // *********************** Request logger ************************
-
             StringBuilder forwardedRequest = new StringBuilder();
-
             forwardedRequest.append(method)
                     .append(" ")
                     .append(path)
-                    .append(HTTPType);
+                    .append(" ")
+                    .append(HTTPType)
+                    .append("\r\n");
 
             for (String header : headers) {
                 String lower = header.toLowerCase();
@@ -36,7 +110,6 @@ public class ClientHandler implements Runnable{
                 if (lower.startsWith("proxy-connection:")) {
                     continue;
                 }
-
                 if (lower.startsWith("connection:")) {
                     continue;
                 }
@@ -47,12 +120,13 @@ public class ClientHandler implements Runnable{
             forwardedRequest.append("Connection: close\r\n");
             forwardedRequest.append("\r\n");
 
+            System.out.println("\n");
             System.out.println("===== FORWARDED REQUEST START =====");
             System.out.println("Forwarded request length: " + forwardedRequest.length());
             System.out.println("Forwarded request raw:");
             System.out.print(forwardedRequest.toString().replace("\r", "\\r").replace("\n", "\\n\n"));
             System.out.println("===== FORWARDED REQUEST END =====");
-
+            System.out.println("\n");
             // ************************ Request logger *************************
 
             // write forwarded request to target server
@@ -61,17 +135,12 @@ public class ClientHandler implements Runnable{
             // flush server output
             serverOutput.flush();
 
-            // read server response bytes
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-
-            while ((bytesRead = serverInput.read(buffer)) != -1) {
-                clientOutput.write(buffer, 0, bytesRead);
-            }
-
-            // flush client output
-            clientOutput.flush();
-
+            System.out.println(" ***************** server resppnse ******************");
+            System.out.println("\n");
+            handlerServerResponse(serverInput, clientOutput);
+            System.out.println("\n");
+            System.out.println(" ***************** server resppnse ******************");
+            System.out.println("\n");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -88,8 +157,6 @@ public class ClientHandler implements Runnable{
             if (requestLine == null || requestLine.isEmpty()) {
                 return;
             }
-
-//            System.out.println("RequestLine: " + requestLine);
 
             String line;
             String host = null;
