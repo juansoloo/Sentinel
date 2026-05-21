@@ -56,16 +56,35 @@ public class ClientHandler implements Runnable{
         return new HostAndPort(targetHost, targetPort);
     }
 
-    private ProxyRequest readClientRequest(BufferedReader reader) throws IOException {
-        int contentLength = 0;
+    private byte[] readHeaderBytes(InputStream input) throws IOException {
+        ByteArrayOutputStream headerBytes = new ByteArrayOutputStream();
 
-        String requestLine = reader.readLine();
+        int b;
+        int lastFourBytes = 0;
 
-        if (requestLine == null || requestLine.isEmpty()) {
+        while ((b = input.read()) != -1) {
+            headerBytes.write(b);
+
+            lastFourBytes = ((lastFourBytes << 8) | b) & 0xFFFFFFFF;
+
+            if (lastFourBytes == HEADER_TERMINATOR) {
+                return headerBytes.toByteArray();
+            }
+        }
+
+        throw new IOException("Client disconnected before sending full headers");
+    }
+
+    private ProxyRequest parseClientRequest(byte[] headerBytes) throws IOException {
+        String headerText = new String(headerBytes, StandardCharsets.ISO_8859_1);
+
+        String[] lines = headerText.split("\r\n");
+
+        if (lines.length == 0 || lines[0].isEmpty()) {
             return null;
         }
 
-        String[] requestsParts = requestLine.split(" ", 3);
+        String[] requestsParts = lines[0].split(" ", 3);
 
         if (requestsParts.length != 3) {
             return null;
@@ -75,11 +94,17 @@ public class ClientHandler implements Runnable{
         String pathRaw = requestsParts[1];
         String httpVersion = requestsParts[2];
 
-        String line;
         String host = null;
+        int contentLength = 0;
         List<String> headers = new ArrayList<>();
 
-        while ((line = reader.readLine()) != null && !line.isEmpty()) {
+        for (int i = 1; i < lines.length; i++) {
+            String line = lines[i];
+
+            if (line.isEmpty()) {
+                continue;
+            }
+
             headers.add(line);
 
             int colonIndex = line.indexOf(":");
@@ -91,12 +116,17 @@ public class ClientHandler implements Runnable{
             String name = line.substring(0, colonIndex).trim();
             String value = line.substring(colonIndex + 1).trim();
 
+            if (name.equalsIgnoreCase("Host")) {
+                host = value;
+            }
+
             if (name.equalsIgnoreCase("Content-Length")) {
                 contentLength = Integer.parseInt(value);
             }
 
-            if (name.equalsIgnoreCase("Host")) {
-                host = value;
+            if (name.equalsIgnoreCase("Transfer-Encoding")
+                    && value.equalsIgnoreCase("chunked")) {
+                throw new IllegalArgumentException("Chunked request bodies are not supported yet");
             }
         }
 
@@ -109,8 +139,7 @@ public class ClientHandler implements Runnable{
         return new ProxyRequest(method, path, httpVersion, host, headers, contentLength);
     }
 
-    private ProxyResponse handleServerResponse(InputStream serverInput,
-                                               OutputStream clientOutput)
+    private ProxyResponse handleServerResponse(InputStream serverInput, OutputStream clientOutput)
             throws IOException {
         ByteArrayOutputStream headerBytes = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
@@ -122,7 +151,7 @@ public class ClientHandler implements Runnable{
         int statusCode = 0;
         String reasonPhrase = "";
 
-        while(true) {
+        do { // change from while(true) to do {}
             int data = serverInput.read();
 
             if (data == -1) {
@@ -132,10 +161,7 @@ public class ClientHandler implements Runnable{
             headerBytes.write(data);
             lastFourBytes = ((lastFourBytes << 8) | data) & 0xFFFFFFFF;
 
-            if (lastFourBytes == HEADER_TERMINATOR) {
-                break;
-            }
-        }
+        } while (lastFourBytes != HEADER_TERMINATOR);
 
         String headerString = headerBytes.toString(StandardCharsets.ISO_8859_1);
         List<HttpHeader> responseHeaders = new ArrayList<>();
@@ -266,7 +292,6 @@ public class ClientHandler implements Runnable{
             serverOutput.write(forwardedRequest.toString().getBytes(StandardCharsets.ISO_8859_1));
 
             if (contentLength > 0) {
-                System.out.println("Forwarding request body bytes: " + clientInput);
                 copyExact(clientInput, serverOutput, contentLength);
             }
 
@@ -282,7 +307,6 @@ public class ClientHandler implements Runnable{
         }
     }
 
-
     @Override
     public void run() {
         HostAndPort target;
@@ -292,8 +316,15 @@ public class ClientHandler implements Runnable{
         try (InputStream clientInput = clientSocket.getInputStream();
                 OutputStream clientOutput = clientSocket.getOutputStream()) {
 
-            BufferedReader bufferReader = new BufferedReader(new InputStreamReader(clientInput, StandardCharsets.ISO_8859_1));
-            ProxyRequest request = readClientRequest(bufferReader);
+            ProxyRequest request;
+
+            try {
+                byte[] headerBytes = readHeaderBytes(clientInput);
+                request = parseClientRequest(headerBytes);
+            } catch(IllegalArgumentException e) {
+                sendErrorResponse(clientOutput, 501, "Not Implemented", e.getMessage());
+                return;
+            }
 
             if (request == null) {
                 sendErrorResponse(clientOutput,
@@ -324,11 +355,12 @@ public class ClientHandler implements Runnable{
             }
 
             System.out.println("========== ABOUT TO FORWARD ==========");
-            System.out.println("method=[" + request.method() + "]");
-            System.out.println("host=[" + target.host() + "]");
-            System.out.println("port=[" + target.port() + "]");
-            System.out.println("path=[" + request.path() + "]");
-            System.out.println("httpVersion=[" + request.httpVersion() + "]");
+            System.out.println("\n");
+            System.out.println("method= " + request.method());
+            System.out.println("host= " + target.host());
+            System.out.println("port= " + target.port());
+            System.out.println("path= " + request.path());
+            System.out.println("httpVersion= " + request.httpVersion());
 
             System.out.println("Headers:");
             for (String header : request.headers()) {
@@ -393,4 +425,3 @@ public class ClientHandler implements Runnable{
         output.flush();
     }
 }
-
