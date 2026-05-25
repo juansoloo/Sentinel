@@ -1,29 +1,38 @@
 package Proxy;
 
-import java.io.*;
+import MVC.Models.ProxyModel;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 
-public class ClientHandler implements Runnable{
+import static Proxy.SocketUtils.closeQuietly;
+
+public class ClientHandler implements Runnable {
     private final Socket clientSocket;
-    private static final int HEADER_TERMINATOR = 0x0D0A0D0A;
-    
-    private record HostAndPort(String host, int port) {}
+    private final ProxyModel proxyModel;
+    private final HttpRequestParser requestParser;
+    private final HttpResponseReader responseReader;
+    private final MitmTunnel mitmTunnel;
+    private final ConnectTunnel connectTunnel;
 
-    public ClientHandler(Socket clientSocket) {
+
+    public ClientHandler(Socket clientSocket, ProxyModel proxyModel) {
         this.clientSocket = clientSocket;
-    }
+        this.proxyModel = proxyModel;
 
-    private String normalizePath(String pathRaw) {
-        if (pathRaw.startsWith("http://")) {
-            int pathStart = pathRaw.indexOf("/", 7);
-            return pathStart == -1 ? "/" : pathRaw.substring(pathStart);
-        }
-
-        return pathRaw;
+        this.requestParser = new HttpRequestParser();
+        this.responseReader = new HttpResponseReader();
+        this.mitmTunnel = new MitmTunnel(
+                proxyModel,
+                requestParser,
+                responseReader
+        );
+        this.connectTunnel = new ConnectTunnel();
     }
 
     private HostAndPort parseHost(String hostHeader) {
@@ -56,191 +65,88 @@ public class ClientHandler implements Runnable{
         return new HostAndPort(targetHost, targetPort);
     }
 
-    private byte[] readHeaderBytes(InputStream input) throws IOException {
-        ByteArrayOutputStream headerBytes = new ByteArrayOutputStream();
-
-        int b;
-        int lastFourBytes = 0;
-
-        while ((b = input.read()) != -1) {
-            headerBytes.write(b);
-
-            lastFourBytes = ((lastFourBytes << 8) | b) & 0xFFFFFFFF;
-
-            if (lastFourBytes == HEADER_TERMINATOR) {
-                return headerBytes.toByteArray();
-            }
-        }
-
-        throw new IOException("Client disconnected before sending full headers");
-    }
-
-    private ProxyRequest parseClientRequest(byte[] headerBytes) throws IOException {
-        String headerText = new String(headerBytes, StandardCharsets.ISO_8859_1);
-
-        String[] lines = headerText.split("\r\n");
-
-        if (lines.length == 0 || lines[0].isEmpty()) {
-            return null;
-        }
-
-        String[] requestsParts = lines[0].split(" ", 3);
-
-        if (requestsParts.length != 3) {
-            return null;
-        }
-
-        String method = requestsParts[0];
-        String pathRaw = requestsParts[1];
-        String httpVersion = requestsParts[2];
-
-        String host = null;
-        int contentLength = 0;
-        List<String> headers = new ArrayList<>();
-
-        for (int i = 1; i < lines.length; i++) {
-            String line = lines[i];
-
-            if (line.isEmpty()) {
-                continue;
-            }
-
-            headers.add(line);
-
-            int colonIndex = line.indexOf(":");
-
-            if (colonIndex == -1) {
-                continue;
-            }
-
-            String name = line.substring(0, colonIndex).trim();
-            String value = line.substring(colonIndex + 1).trim();
-
-            if (name.equalsIgnoreCase("Host")) {
-                host = value;
-            }
-
-            if (name.equalsIgnoreCase("Content-Length")) {
-                contentLength = Integer.parseInt(value);
-            }
-
-            if (name.equalsIgnoreCase("Transfer-Encoding")
-                    && value.equalsIgnoreCase("chunked")) {
-                throw new IllegalArgumentException("Chunked request bodies are not supported yet");
-            }
-        }
-
-        if (host == null) {
-            return null;
-        }
-
-        String path = normalizePath(pathRaw);
-
-        return new ProxyRequest(method, path, httpVersion, host, headers, contentLength);
-    }
-
-    private ProxyResponse handleServerResponse(InputStream serverInput, OutputStream clientOutput)
+    private void handleConnect(HostAndPort target,
+                                InputStream clientInput,
+                                OutputStream clientOutput)
             throws IOException {
-        ByteArrayOutputStream headerBytes = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        
-        int bytesRead;
-        int lastFourBytes = 0;
 
-        String version = "";
-        int statusCode = 0;
-        String reasonPhrase = "";
-
-        do { // change from while(true) to do {}
-            int data = serverInput.read();
-
-            if (data == -1) {
-                throw new IOException("Server ended unexpectedly.");
-            }
-
-            headerBytes.write(data);
-            lastFourBytes = ((lastFourBytes << 8) | data) & 0xFFFFFFFF;
-
-        } while (lastFourBytes != HEADER_TERMINATOR);
-
-        String headerString = headerBytes.toString(StandardCharsets.ISO_8859_1);
-        List<HttpHeader> responseHeaders = new ArrayList<>();
-
-        String[] lines = headerString.split("\r\n");
-
-        for (String line : lines ) {
-            if (line.isEmpty()) {
-                continue;
-            }
-
-            if (line.startsWith("HTTP/")) {
-                String[] statusParts = line.split(" ", 3);
-
-                if (statusParts.length >= 2) {
-                    version = statusParts[0];
-                    statusCode = Integer.parseInt(statusParts[1]);
-                    reasonPhrase = statusParts.length > 2 ? statusParts[2] : "";
-                }
-
-                System.out.println("HTTP Version: " + version);
-                System.out.println("Status Code: " + statusCode);
-                System.out.println("Reason Phrase: " + reasonPhrase);
-
-            } else {
-                int colonIndex = line.indexOf(":");
-
-                if (colonIndex == -1) {
-                    continue;
-                }
-
-                String name = line.substring(0, colonIndex).trim();
-                String value = line.substring(colonIndex+ 1).trim();
-
-                responseHeaders.add(new HttpHeader(name, value));
-                System.out.println(name + ": " + value);
-            }
+        if (target.port() != 443 && target.port() != 8443) {
+            throw new IllegalArgumentException("CONNECT port not allowed: " + target.port());
         }
 
-        clientOutput.write(headerBytes.toByteArray());
+        try (Socket serverSocket = new Socket()) {
+            int timeout = 15000;
 
-        while ((bytesRead = serverInput.read(buffer)) != -1) {
-            clientOutput.write(buffer, 0, bytesRead);
-        }
+            serverSocket.connect(
+                    new InetSocketAddress(target.host(), target.port()),
+                    timeout);
 
-        clientOutput.flush();
+            serverSocket.setSoTimeout(0);
+            clientSocket.setSoTimeout(0);
 
-        return new ProxyResponse(version, statusCode, reasonPhrase, responseHeaders);
-    }
+            System.out.println("Connect tunnel established to " +
+                    target.host() + ":" + target.port());
 
-    private void copyExact(InputStream in, OutputStream out, int byteCount) throws IOException {
-        byte[] buffer = new byte[8192];
-        int remaining = byteCount;
+            clientOutput.write("HTTP/1.1 200 Connection Established\r\n\r\n"
+                    .getBytes(StandardCharsets.ISO_8859_1));
 
-        while(remaining > 0) {
-            int read = in.read(buffer, 0, Math.min(buffer.length, remaining));
+            clientOutput.flush();
 
-            if (read == -1) {
-                throw new IOException("client disconnected before full body request was read.");
+            InputStream serverInput = serverSocket.getInputStream();
+            OutputStream serverOutput = serverSocket.getOutputStream();
+
+            Thread clientToServer = new Thread(() -> {
+                try {
+                    SocketUtils.copyTunnel(clientInput, serverOutput);
+                } catch (IOException e) {
+                    if (!"Socket closed".equals(e.getMessage())) {
+                        System.out.println("Tunnel client->server closed: " + e.getMessage());
+                    }
+                } finally {
+                    closeQuietly(serverSocket);
+                    closeQuietly(clientSocket);
+                }
+            }, "tunnel-client-to-server-" + target.host());
+
+            Thread serverToClient = new Thread(() -> {
+                try {
+                    SocketUtils.copyTunnel(serverInput, clientOutput);
+                } catch (IOException e) {
+                    if (!"Socket closed".equals(e.getMessage())) {
+                        System.out.println("Tunnel server->client closed: " + e.getMessage());
+                    }
+                } finally {
+                    closeQuietly(serverSocket);
+                    closeQuietly(clientSocket);
+                }
+            }, "tunnel-server-to-client-" + target.host());
+
+            clientToServer.start();
+            serverToClient.start();
+
+            try {
+                clientToServer.join();
+                serverToClient.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
-
-            out.write(buffer, 0, read);
-            remaining -= read;
         }
     }
 
     private ProxyResponse forwardRequest(String host,
-                                         int targetPort,
-                                         String path,
-                                         List<String> headers,
-                                         String HTTPType,
-                                         String method,
-                                         InputStream clientInput,
-                                         int contentLength,
-                                         OutputStream clientOutput)
+                                        int targetPort,
+                                        String path,
+                                        List<String> headers,
+                                        String HTTPType,
+                                        String method,
+                                        InputStream clientInput,
+                                        int contentLength,
+                                        OutputStream clientOutput)
             throws IOException {
         try (Socket serverSocket = new Socket()) {
 
             serverSocket.connect(new InetSocketAddress(host, targetPort), 15000);
+            serverSocket.setSoTimeout(15000);
 
             System.out.println("\nConnecting to target: " + host + ":" + targetPort);
 
@@ -255,8 +161,6 @@ public class ClientHandler implements Runnable{
                     .append(" ")
                     .append(HTTPType)
                     .append("\r\n");
-
-
 
             for (String header : headers) {
                 int colonIndex = header.indexOf(":");
@@ -292,19 +196,39 @@ public class ClientHandler implements Runnable{
             serverOutput.write(forwardedRequest.toString().getBytes(StandardCharsets.ISO_8859_1));
 
             if (contentLength > 0) {
-                copyExact(clientInput, serverOutput, contentLength);
+                System.out.println("Forwarding request body bytes: " + contentLength);
+                SocketUtils.copyExact(clientInput, serverOutput, contentLength);
+                System.out.println("Finished forwarding request body");
             }
 
             serverOutput.flush();
 
             System.out.println(" ***************** server response ******************");
             System.out.println("\n");
-            ProxyResponse response = handleServerResponse(serverInput, clientOutput);
+            ProxyResponse response = responseReader.handleServerResponse(serverInput, clientOutput);
             System.out.println(" ***************** server response ******************");
             System.out.println("\n");
 
             return response;
         }
+    }
+
+    private boolean shouldMitm(HostAndPort target) {
+        String host = target.host().toLowerCase();
+
+        return host.equals("example.com")
+                || host.equals("httpbin.org");
+    }
+
+    // only allows targets defined in this function
+    private boolean isAllowedTarget(HostAndPort target) {
+        String host = target.host().toLowerCase();
+
+        return !host.equals("localhost")
+                && !host.equals("127.0.0.1")
+                && !host.startsWith("127.")
+                && !host.equals("0.0.0.0")
+                && !host.equals("::1");
     }
 
     @Override
@@ -316,13 +240,32 @@ public class ClientHandler implements Runnable{
         try (InputStream clientInput = clientSocket.getInputStream();
                 OutputStream clientOutput = clientSocket.getOutputStream()) {
 
+            clientSocket.setSoTimeout(15000);
+
             ProxyRequest request;
 
+            // parser try/catch block
             try {
-                byte[] headerBytes = readHeaderBytes(clientInput);
-                request = parseClientRequest(headerBytes);
+                byte[] headerBytes = requestParser.readHeaderBytes(clientInput);
+                request = requestParser.parseClientRequest(headerBytes);
+            } catch (java.net.SocketTimeoutException e) {
+                sendErrorResponse(
+                        clientOutput,
+                        408,
+                        "Request Timeout",
+                        "Timed out waiting for request headers");
+                return;
+            } catch (UnsupportedOperationException e) {
+                sendErrorResponse(clientOutput,
+                        501,
+                        "Not Implemented",
+                        e.getMessage());
+                return;
             } catch(IllegalArgumentException e) {
-                sendErrorResponse(clientOutput, 501, "Not Implemented", e.getMessage());
+                sendErrorResponse(clientOutput,
+                        400,
+                        "Bad Request",
+                        e.getMessage());
                 return;
             }
 
@@ -335,22 +278,71 @@ public class ClientHandler implements Runnable{
             }
 
             if (request.method().equalsIgnoreCase("CONNECT")) {
-                System.out.println("CONNECT not supported yet: " + request.path());
-                sendErrorResponse(clientOutput,
-                        501,
-                        "Not implemented",
-                        "CONNECT is not supported yet");
+                System.out.println("CONNECT request: " + request.path());
+
+                try {
+                    HostAndPort connectTarget = parseHost(request.path());
+
+                    if (!isAllowedTarget(connectTarget)) {
+                        sendErrorResponse(
+                                clientOutput,
+                                403,
+                                "Forbidden",
+                                "Target host is allowed"
+                        );
+
+                        return;
+                    }
+
+                    if (shouldMitm(connectTarget)) {
+                        System.out.println("Using MITM for: " + connectTarget.host());
+
+                        mitmTunnel.handle(
+                                connectTarget,
+                                clientSocket,
+                                clientOutput);
+                    } else {
+                        System.out.println("Using normal tunnel for: " + request.path());
+
+                        handleConnect(
+                                connectTarget,
+                                clientInput,
+                                clientOutput);
+                    }
+                } catch (IllegalArgumentException e) {
+                    sendErrorResponse(clientOutput,
+                            400,
+                            "Bad Request",
+                            e.getMessage());
+                } catch (IOException e) {
+                    sendErrorResponse(clientOutput,
+                            502,
+                            "Bad Gateway",
+                            "Tunnel Failed");
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+
                 return;
             }
 
-
             try {
                 target = parseHost(request.host());
+
+                if (!isAllowedTarget(target)) {
+                    sendErrorResponse(
+                        clientOutput,
+                        403,
+                        "Forbidden",
+                        "Target host is not allowed");
+
+                    return;
+                }
             } catch (IllegalArgumentException e) {
                 sendErrorResponse(clientOutput,
                         400,
                         "Bad Request",
-                        "Bad Request");
+                        e.getMessage());
                 return;
             }
 
@@ -363,9 +355,11 @@ public class ClientHandler implements Runnable{
             System.out.println("httpVersion= " + request.httpVersion());
 
             System.out.println("Headers:");
+
             for (String header : request.headers()) {
                 System.out.println(header);
             }
+
             System.out.println("======================================");
 
             host = target.host();
@@ -384,6 +378,7 @@ public class ClientHandler implements Runnable{
                         clientOutput);
 
                 HttpTransaction transaction = new HttpTransaction(request, response);
+                proxyModel.addTransaction(transaction);
 
                 System.out.println("\n");
                 System.out.println(
@@ -392,6 +387,7 @@ public class ClientHandler implements Runnable{
                                 transaction.request().path() + " -> " +
                                 transaction.response().statusCode());
                 System.out.println("\n");
+
             } catch (IOException e) {
                 System.out.println("Forwarding failed:");
                 System.out.println("host: " + host);
@@ -420,7 +416,7 @@ public class ClientHandler implements Runnable{
                         "Connection: close" + "\r\n" +
                         "\r\n";
 
-        output.write(response.getBytes());
+        output.write(response.getBytes(StandardCharsets.ISO_8859_1));
         output.write(bodyBytes);
         output.flush();
     }

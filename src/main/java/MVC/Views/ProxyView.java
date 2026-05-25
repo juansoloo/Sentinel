@@ -1,12 +1,13 @@
 package MVC.Views;
 
 import MVC.Facade.ScannerFacade;
-import MVC.Interfaces.Observer;
-
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 
-public class ProxyView implements Observer {
+import MVC.Interfaces.ProxyModelListener;
+import Proxy.HttpTransaction;
+
+public class ProxyView implements ProxyModelListener {
     ScannerFacade scannerFacade = new ScannerFacade();
 
     private JPanel root;
@@ -51,10 +52,20 @@ public class ProxyView implements Observer {
 
     public void displayError() {}
 
-    @Override
-    public void update() {}
-
     private void createUIComponents() {
         // TODO: place custom component creation code here
+    }
+
+    @Override
+    public void update(HttpTransaction transaction) {
+        SwingUtilities.invokeLater(() -> endpointTableModel.addRow(new Object[]{
+                endpointTableModel.getRowCount() + 1,
+                transaction.request().host(),
+                transaction.request().method(),
+                transaction.request().path(),
+                transaction.response().statusCode(),
+                "",
+                ""
+        }));
     }
 }

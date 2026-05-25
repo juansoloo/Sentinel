@@ -1,29 +1,31 @@
 package MVC.Models;
 
-import MVC.Interfaces.Subject;
+import MVC.Interfaces.ProxyModelListener;
+import Proxy.HttpTransaction;
 
-public class ProxyModel implements Subject {
-    private String scannerName;
+import java.util.ArrayList;
+import java.util.List;
 
-    public void setScannerName(String scannerName) {
-        this.scannerName = scannerName;
+public class ProxyModel implements ProxyModelListener {
+    private final List<HttpTransaction> transactions = new ArrayList<>();
+    private final List<ProxyModelListener> listeners = new ArrayList<>();
+
+    public void addTransaction(HttpTransaction transaction) {
+        transactions.add(transaction);
+        update(transaction);
     }
 
-    public String getScannerName() {
-        return scannerName;
-    }
-    @Override
-    public void addObserver() {
-
+    public List<HttpTransaction> getTransactions() {
+        return List.copyOf(transactions);
     }
 
-    @Override
-    public void removeObserver() {
-
+    public void addListener(ProxyModelListener listener) {
+        listeners.add(listener);
     }
 
-    @Override
-    public void notifyObservers() {
-
+    public void update(HttpTransaction transaction) {
+        for (ProxyModelListener listener : listeners) {
+            listener.update(transaction);
+        }
     }
 }
