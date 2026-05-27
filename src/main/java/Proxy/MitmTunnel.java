@@ -22,11 +22,12 @@ public class MitmTunnel {
 
     public MitmTunnel(ProxyModel proxyModel,
                     HttpRequestParser requestParser,
-                    HttpResponseReader responseReader) {
+                    HttpResponseReader responseReader,
+                    CertificateManager certificateManager) {
         this.proxyModel = proxyModel;
         this.requestParser = requestParser;
         this.responseReader = responseReader;
-        this.certificateManager = new CertificateManager();
+        this.certificateManager = certificateManager;
     }
 
     public void handle(HostAndPort target,

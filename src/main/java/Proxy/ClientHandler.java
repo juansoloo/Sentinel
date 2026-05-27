@@ -1,12 +1,12 @@
 package Proxy;
 
-import MVC.Models.ProxyModel;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+
+import MVC.Models.ProxyModel;
 
 public class ClientHandler implements Runnable {
     private final Socket clientSocket;
@@ -22,14 +22,17 @@ public class ClientHandler implements Runnable {
         this.clientSocket = clientSocket;
         this.proxyModel = proxyModel;
     
+        CertificateManager certificateManager = new CertificateManager();
         this.requestParser = new HttpRequestParser();
         this.responseReader = new HttpResponseReader();
-        this.mitmTargetSelector = new MitmTargetSelector();
+        this.mitmTargetSelector = new MitmTargetSelector(certificateManager);
+
         this.plainHttpForwarder = new PlainHttpForwarder(responseReader);
         this.mitmTunnel = new MitmTunnel(
                 proxyModel,
                 requestParser,
-                responseReader
+                responseReader,
+                certificateManager
         );
         this.connectTunnel = new ConnectTunnel();
     }

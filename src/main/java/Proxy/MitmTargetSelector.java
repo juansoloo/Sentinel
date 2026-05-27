@@ -1,10 +1,13 @@
 package Proxy;
 
 public class MitmTargetSelector {
-    public boolean shouldMitm(HostAndPort target) {
-        String host = target.host().toLowerCase();
+    private final CertificateManager certificateManager;
 
-        return host.equals("example.com")
-            || host.equals("httpbin.org");
+    public MitmTargetSelector(CertificateManager certificateManager) {
+        this.certificateManager = certificateManager;
+    }
+
+    public boolean shouldMitm(HostAndPort target) {
+        return certificateManager.hasCertificateFor(target.host());
     }
 }
