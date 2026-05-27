@@ -67,6 +67,4 @@ public class PlainHttpForwarder {
             return responseReader.handleServerResponse(serverInput, clientOutput);
         }
     }
-
-
 }

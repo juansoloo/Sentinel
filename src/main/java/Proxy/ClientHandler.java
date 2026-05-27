@@ -1,12 +1,12 @@
 package Proxy;
 
+import MVC.Models.ProxyModel;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-
-import MVC.Models.ProxyModel;
 
 public class ClientHandler implements Runnable {
     private final Socket clientSocket;
@@ -16,6 +16,7 @@ public class ClientHandler implements Runnable {
     private final MitmTunnel mitmTunnel;
     private final PlainHttpForwarder plainHttpForwarder;
     private final ConnectTunnel connectTunnel;
+    private final MitmTargetSelector mitmTargetSelector;
 
     public ClientHandler(Socket clientSocket, ProxyModel proxyModel) {
         this.clientSocket = clientSocket;
@@ -23,6 +24,7 @@ public class ClientHandler implements Runnable {
     
         this.requestParser = new HttpRequestParser();
         this.responseReader = new HttpResponseReader();
+        this.mitmTargetSelector = new MitmTargetSelector();
         this.plainHttpForwarder = new PlainHttpForwarder(responseReader);
         this.mitmTunnel = new MitmTunnel(
                 proxyModel,
@@ -60,13 +62,6 @@ public class ClientHandler implements Runnable {
         }
 
         return new HostAndPort(targetHost, targetPort);
-    }
-
-    private boolean shouldMitm(HostAndPort target) {
-        String host = target.host().toLowerCase();
-
-        return host.equals("example.com")
-                || host.equals("httpbin.org");
     }
 
     // only allows targets defined in this function
@@ -141,7 +136,7 @@ public class ClientHandler implements Runnable {
                         return;
                     }
 
-                    if (shouldMitm(connectTarget)) {
+                    if (mitmTargetSelector.shouldMitm(connectTarget)) {
                         mitmTunnel.handle(
                                 connectTarget,
                                 clientSocket,

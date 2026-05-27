@@ -1,39 +1,37 @@
 package Proxy;
 
-import MVC.Models.ProxyModel;
-
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSocket;
-import javax.net.ssl.SSLSocketFactory;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyStore;
 import java.util.List;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+
+import MVC.Models.ProxyModel;
 import static Proxy.SocketUtils.closeQuietly;
 
 public class MitmTunnel {
-    private static final String MITM_KEYSTORE_PATH = "/Users/juansoloo/Documents/Sentinel/certs/mitm-httpbin.p12";
     private final ProxyModel proxyModel;
     private final HttpRequestParser requestParser;
     private final HttpResponseReader responseReader;
+    private final CertificateManager certificateManager;
 
     public MitmTunnel(ProxyModel proxyModel,
-                      HttpRequestParser requestParser,
-                      HttpResponseReader responseReader) {
+                    HttpRequestParser requestParser,
+                    HttpResponseReader responseReader) {
         this.proxyModel = proxyModel;
         this.requestParser = requestParser;
         this.responseReader = responseReader;
+        this.certificateManager = new CertificateManager();
     }
 
     public void handle(HostAndPort target,
-                       Socket clientSocket,
-                       OutputStream clientOutput) throws Exception {
+                        Socket clientSocket,
+                        OutputStream clientOutput) throws Exception {
         if (target.port() != 443) {
             throw new IllegalArgumentException("MITM only supports port 443 for now");
         }
@@ -49,7 +47,7 @@ public class MitmTunnel {
             clientOutput.flush();
 
             // 2. wrap the client socket as a TLS socket
-            SSLContext mitmServerContext = createMitmServerSslContext();
+            SSLContext mitmServerContext = certificateManager.createServerContextFor(target.host());
 
             tlsClientSocket = (SSLSocket) mitmServerContext
                     .getSocketFactory()
@@ -158,8 +156,8 @@ public class MitmTunnel {
     }
 
     private void forwardMitmHttpsRequest(ProxyRequest request,
-                                         InputStream decryptedClientInput,
-                                         OutputStream serverOutput) throws IOException {
+                                        InputStream decryptedClientInput,
+                                        OutputStream serverOutput) throws IOException {
         StringBuilder forwardedRequest = new StringBuilder();
 
         forwardedRequest.append(request.method())
@@ -201,29 +199,5 @@ public class MitmTunnel {
         }
 
         serverOutput.flush();
-    }
-
-    private SSLContext createMitmServerSslContext() throws Exception {
-        char[] password = "changeit".toCharArray(); // why hard coding this? maybe .env for security reasons
-
-        KeyStore keyStore = KeyStore.getInstance("PKCS12");
-
-        try (InputStream keyStoreInput = new FileInputStream(MITM_KEYSTORE_PATH)) {
-            keyStore.load(keyStoreInput, password);
-        }
-
-        KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(
-                KeyManagerFactory.getDefaultAlgorithm());
-
-        keyManagerFactory.init(keyStore, password);
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(
-                keyManagerFactory.getKeyManagers(),
-                null,
-                null
-        );
-
-        return sslContext;
     }
 }
