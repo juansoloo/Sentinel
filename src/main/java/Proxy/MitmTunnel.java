@@ -59,10 +59,8 @@ public class MitmTunnel {
                             clientSocket.getPort(),
                             false);
 
-            System.out.println("Starting MITM client TLS handshake");
             tlsClientSocket.setUseClientMode(false);
             tlsClientSocket.startHandshake();
-            System.out.println("MITM client TLS established for " + target.host());
 
 
             // 3. Connect to the real server using TLS as a client
@@ -73,10 +71,8 @@ public class MitmTunnel {
                             target.host(),
                             target.port());
 
-            System.out.println("Starting MITM server TLS handshake");
             tlsServerSocket.setUseClientMode(true);
             tlsServerSocket.startHandshake();
-            System.out.println("MITM server TLS established to " + target.host());
 
             // 4. Now both streams are decrypted HTTP request to the TLS system
             InputStream decryptedClientInput = tlsClientSocket.getInputStream();
@@ -93,17 +89,12 @@ public class MitmTunnel {
                     byte[] headerBytes = requestParser.readHeaderBytes(decryptedClientInput);
                     httpsRequest = requestParser.parseClientRequest(headerBytes);
                 } catch (IOException e) {
-                    System.out.println("MITM client closed HTTPS connection or no more requests.");
                     return;
                 }
 
                 if (httpsRequest == null) {
                     throw new IOException("Invalid HTTPS request inside MITM tunnel");
                 }
-
-                System.out.println("MITM decrypted request: "
-                        + httpsRequest.method() + " "
-                        + httpsRequest.path());
 
                 forwardMitmHttpsRequest(
                         httpsRequest,
@@ -118,18 +109,18 @@ public class MitmTunnel {
 
                 proxyModel.addTransaction(transaction);
 
+                System.out.println(
+                        "MITM " +
+                                transaction.request().method() + " " +
+                                transaction.request().host() + " " +
+                                transaction.request().path() + " -> " +
+                                transaction.response().statusCode());
 
                 if (usesConnectionClose(httpsRequest.headers())) {
-                    System.out.println("Client requested Connection close.");
                     return;
                 }
             }
         } catch (IOException e) {
-            System.out.println("CONNECT handling failed:");
-            System.out.println("error class: " + e.getClass().getName());
-            System.out.println("message: " + e.getMessage());
-            e.printStackTrace();
-
             closeQuietly(clientSocket);
 
             throw e;
@@ -198,19 +189,10 @@ public class MitmTunnel {
         forwardedRequest.append("Connection: close\r\n");
         forwardedRequest.append("\r\n");
 
-        System.out.println("===== MITM FORWARDED HTTPS REQUEST START =====");
-        System.out.println(forwardedRequest
-                .toString()
-                .replace("\r", "\\r")
-                .replace("\n", "\\n"));
-        System.out.println("===== MITM FORWARDED HTTPS REQUEST END =====");
-
         serverOutput.write(
                 forwardedRequest.toString().getBytes(StandardCharsets.ISO_8859_1));
 
         if (request.contentLength() > 0) {
-            System.out.println("MITM forwarding HTTPS body bytes: "
-                    + request.contentLength());
             SocketUtils.copyExact(
                     decryptedClientInput,
                     serverOutput,

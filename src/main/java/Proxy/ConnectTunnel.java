@@ -30,9 +30,6 @@ public class ConnectTunnel {
             serverSocket.setSoTimeout(0);
             clientSocket.setSoTimeout(0);
 
-            System.out.println("Connect tunnel established to "
-                    + target.host() + ":" + target.port());
-
             clientOutput.write("HTTP/1.1 200 Connection Established\r\n\r\n"
                     .getBytes(StandardCharsets.ISO_8859_1));
 
@@ -45,9 +42,7 @@ public class ConnectTunnel {
                 try {
                     SocketUtils.copyTunnel(clientInput, serverOutput);
                 } catch (IOException e) {
-                    if (!"Socket closed".equals(e.getMessage())) {
-                        System.out.println("Tunnel client->server closed: " + e.getMessage());
-                    }
+                    // Tunnel shutdown is usually initiated by either peer closing the socket.
                 } finally {
                     SocketUtils.closeQuietly(serverSocket);
                     SocketUtils.closeQuietly(clientSocket);
@@ -58,9 +53,7 @@ public class ConnectTunnel {
                 try {
                     SocketUtils.copyTunnel(serverInput, clientOutput);
                 } catch (IOException e) {
-                    if (!"Socket closed".equals(e.getMessage())) {
-                        System.out.println("Tunnel server->client closed: " + e.getMessage());
-                    }
+                    // Tunnel shutdown is usually initiated by either peer closing the socket.
                 } finally {
                     SocketUtils.closeQuietly(serverSocket);
                     SocketUtils.closeQuietly(clientSocket);

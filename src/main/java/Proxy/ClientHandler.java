@@ -1,16 +1,12 @@
 package Proxy;
 
-import MVC.Models.ProxyModel;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
-import static Proxy.SocketUtils.closeQuietly;
+import MVC.Models.ProxyModel;
 
 public class ClientHandler implements Runnable {
     private final Socket clientSocket;
@@ -18,15 +14,16 @@ public class ClientHandler implements Runnable {
     private final HttpRequestParser requestParser;
     private final HttpResponseReader responseReader;
     private final MitmTunnel mitmTunnel;
+    private final PlainHttpForwarder plainHttpForwarder;
     private final ConnectTunnel connectTunnel;
-
 
     public ClientHandler(Socket clientSocket, ProxyModel proxyModel) {
         this.clientSocket = clientSocket;
         this.proxyModel = proxyModel;
-
+    
         this.requestParser = new HttpRequestParser();
         this.responseReader = new HttpResponseReader();
+        this.plainHttpForwarder = new PlainHttpForwarder(responseReader);
         this.mitmTunnel = new MitmTunnel(
                 proxyModel,
                 requestParser,
@@ -63,154 +60,6 @@ public class ClientHandler implements Runnable {
         }
 
         return new HostAndPort(targetHost, targetPort);
-    }
-
-    private void handleConnect(HostAndPort target,
-                                InputStream clientInput,
-                                OutputStream clientOutput)
-            throws IOException {
-
-        if (target.port() != 443 && target.port() != 8443) {
-            throw new IllegalArgumentException("CONNECT port not allowed: " + target.port());
-        }
-
-        try (Socket serverSocket = new Socket()) {
-            int timeout = 15000;
-
-            serverSocket.connect(
-                    new InetSocketAddress(target.host(), target.port()),
-                    timeout);
-
-            serverSocket.setSoTimeout(0);
-            clientSocket.setSoTimeout(0);
-
-            System.out.println("Connect tunnel established to " +
-                    target.host() + ":" + target.port());
-
-            clientOutput.write("HTTP/1.1 200 Connection Established\r\n\r\n"
-                    .getBytes(StandardCharsets.ISO_8859_1));
-
-            clientOutput.flush();
-
-            InputStream serverInput = serverSocket.getInputStream();
-            OutputStream serverOutput = serverSocket.getOutputStream();
-
-            Thread clientToServer = new Thread(() -> {
-                try {
-                    SocketUtils.copyTunnel(clientInput, serverOutput);
-                } catch (IOException e) {
-                    if (!"Socket closed".equals(e.getMessage())) {
-                        System.out.println("Tunnel client->server closed: " + e.getMessage());
-                    }
-                } finally {
-                    closeQuietly(serverSocket);
-                    closeQuietly(clientSocket);
-                }
-            }, "tunnel-client-to-server-" + target.host());
-
-            Thread serverToClient = new Thread(() -> {
-                try {
-                    SocketUtils.copyTunnel(serverInput, clientOutput);
-                } catch (IOException e) {
-                    if (!"Socket closed".equals(e.getMessage())) {
-                        System.out.println("Tunnel server->client closed: " + e.getMessage());
-                    }
-                } finally {
-                    closeQuietly(serverSocket);
-                    closeQuietly(clientSocket);
-                }
-            }, "tunnel-server-to-client-" + target.host());
-
-            clientToServer.start();
-            serverToClient.start();
-
-            try {
-                clientToServer.join();
-                serverToClient.join();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-    }
-
-    private ProxyResponse forwardRequest(String host,
-                                        int targetPort,
-                                        String path,
-                                        List<String> headers,
-                                        String HTTPType,
-                                        String method,
-                                        InputStream clientInput,
-                                        int contentLength,
-                                        OutputStream clientOutput)
-            throws IOException {
-        try (Socket serverSocket = new Socket()) {
-
-            serverSocket.connect(new InetSocketAddress(host, targetPort), 15000);
-            serverSocket.setSoTimeout(15000);
-
-            System.out.println("\nConnecting to target: " + host + ":" + targetPort);
-
-            OutputStream serverOutput = serverSocket.getOutputStream();
-            InputStream serverInput = serverSocket.getInputStream();
-
-            StringBuilder forwardedRequest = new StringBuilder();
-
-            forwardedRequest.append(method)
-                    .append(" ")
-                    .append(path)
-                    .append(" ")
-                    .append(HTTPType)
-                    .append("\r\n");
-
-            for (String header : headers) {
-                int colonIndex = header.indexOf(":");
-
-                if (colonIndex == -1) {
-                    continue;
-                }
-
-                String name = header.substring(0, colonIndex).trim();
-
-                if (name.equalsIgnoreCase("Proxy-Connection")
-                        || name.equalsIgnoreCase("Connection")) {
-                    continue;
-                }
-
-                forwardedRequest.append(header).append("\r\n");
-            }
-
-            forwardedRequest.append("Connection: close\r\n");
-            forwardedRequest.append("\r\n");
-
-            System.out.println("\n");
-            System.out.println("===== FORWARDED REQUEST START =====");
-            System.out.println("Forwarded request length: " + forwardedRequest.length());
-            System.out.println("Forwarded request raw:");
-            System.out.print(forwardedRequest
-                    .toString()
-                    .replace("\r", "\\r")
-                    .replace("\n", "\\n\n"));
-            System.out.println("===== FORWARDED REQUEST END =====");
-            System.out.println("\n");
-
-            serverOutput.write(forwardedRequest.toString().getBytes(StandardCharsets.ISO_8859_1));
-
-            if (contentLength > 0) {
-                System.out.println("Forwarding request body bytes: " + contentLength);
-                SocketUtils.copyExact(clientInput, serverOutput, contentLength);
-                System.out.println("Finished forwarding request body");
-            }
-
-            serverOutput.flush();
-
-            System.out.println(" ***************** server response ******************");
-            System.out.println("\n");
-            ProxyResponse response = responseReader.handleServerResponse(serverInput, clientOutput);
-            System.out.println(" ***************** server response ******************");
-            System.out.println("\n");
-
-            return response;
-        }
     }
 
     private boolean shouldMitm(HostAndPort target) {
@@ -278,8 +127,6 @@ public class ClientHandler implements Runnable {
             }
 
             if (request.method().equalsIgnoreCase("CONNECT")) {
-                System.out.println("CONNECT request: " + request.path());
-
                 try {
                     HostAndPort connectTarget = parseHost(request.path());
 
@@ -295,17 +142,14 @@ public class ClientHandler implements Runnable {
                     }
 
                     if (shouldMitm(connectTarget)) {
-                        System.out.println("Using MITM for: " + connectTarget.host());
-
                         mitmTunnel.handle(
                                 connectTarget,
                                 clientSocket,
                                 clientOutput);
                     } else {
-                        System.out.println("Using normal tunnel for: " + request.path());
-
-                        handleConnect(
+                        connectTunnel.handle(
                                 connectTarget,
+                                clientSocket,
                                 clientInput,
                                 clientOutput);
                     }
@@ -346,64 +190,34 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
-            System.out.println("========== ABOUT TO FORWARD ==========");
-            System.out.println("\n");
-            System.out.println("method= " + request.method());
-            System.out.println("host= " + target.host());
-            System.out.println("port= " + target.port());
-            System.out.println("path= " + request.path());
-            System.out.println("httpVersion= " + request.httpVersion());
-
-            System.out.println("Headers:");
-
-            for (String header : request.headers()) {
-                System.out.println(header);
-            }
-
-            System.out.println("======================================");
-
             host = target.host();
             port = target.port();
 
             try {
-                ProxyResponse response = forwardRequest(
-                        target.host(),
-                        target.port(),
-                        request.path(),
-                        request.headers(),
-                        request.httpVersion(),
-                        request.method(),
-                        clientInput,
-                        request.contentLength(),
-                        clientOutput);
-
+                ProxyResponse response = plainHttpForwarder.forward(target,
+                    request,
+                    clientInput,
+                    clientOutput);
+                
                 HttpTransaction transaction = new HttpTransaction(request, response);
                 proxyModel.addTransaction(transaction);
 
-                System.out.println("\n");
                 System.out.println(
-                        transaction.request().method() + " " +
-                                transaction.request().host() + " " +
-                                transaction.request().path() + " -> " +
-                                transaction.response().statusCode());
-                System.out.println("\n");
+                        request.method() + " " +
+                                request.host() + " " +
+                                request.path() + " -> " +
+                                response.statusCode());
 
             } catch (IOException e) {
-                System.out.println("Forwarding failed:");
-                System.out.println("host: " + host);
-                System.out.println("port: " + port);
-                System.out.println("error class: " + e.getClass().getName());
-                System.out.println("message: " + e.getMessage());
-
-                e.printStackTrace();
+                System.out.println("Forwarding failed for " + host + ":" + port + " - " + e.getMessage());
                 try {
                     sendErrorResponse(clientOutput, 502, "Bad Gateway", "Bad Gateway");
                 } catch (IOException ex) {
-                    System.out.println("client already disconnected.");
+                    System.out.println("Unable to send error response: " + ex.getMessage());
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("Client handling failed: " + e.getMessage());
         }
     }
 

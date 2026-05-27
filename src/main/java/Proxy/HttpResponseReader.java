@@ -22,8 +22,9 @@ public class HttpResponseReader {
         String version = "";
         int statusCode = 0;
         String reasonPhrase = "";
+        int contentLength = -1;
 
-        do { // change from while(true) to do {}
+        do {
             int data = serverInput.read();
 
             if (data == -1) {
@@ -31,7 +32,7 @@ public class HttpResponseReader {
             }
 
             headerBytes.write(data);
-            lastFourBytes = ((lastFourBytes << 8) | data) & 0xFFFFFFFF;;
+            lastFourBytes = ((lastFourBytes << 8) | data) & 0xFFFFFFFF;
 
         } while (lastFourBytes != HEADER_TERMINATOR);
 
@@ -54,10 +55,6 @@ public class HttpResponseReader {
                     reasonPhrase = statusParts.length > 2 ? statusParts[2] : "";
                 }
 
-                System.out.println("HTTP Version: " + version);
-                System.out.println("Status Code: " + statusCode);
-                System.out.println("Reason Phrase: " + reasonPhrase);
-
             } else {
                 int colonIndex = line.indexOf(":");
 
@@ -69,14 +66,31 @@ public class HttpResponseReader {
                 String value = line.substring(colonIndex+ 1).trim();
 
                 responseHeaders.add(new HttpHeader(name, value));
-                System.out.println(name + ": " + value);
+
+                if (name.equalsIgnoreCase("Content-Length")) {
+                    try {
+                        contentLength = Integer.parseInt(value);
+                    } catch (NumberFormatException e) {
+                        throw new IOException("Invalid Content-Length: " + value, e);
+                    }
+
+                    if (contentLength < 0) {
+                        throw new IOException("Invalid Content-Length: " + value);
+                    }
+                }
             }
         }
 
         clientOutput.write(headerBytes.toByteArray());
 
-        while ((bytesRead = serverInput.read(buffer)) != -1) {
-            clientOutput.write(buffer, 0, bytesRead);
+        if (contentLength > 0) {
+            SocketUtils.copyExact(serverInput, clientOutput, contentLength);
+        } else if (contentLength == 0) {
+            // No response body to forward
+        } else {
+            while ((bytesRead = serverInput.read(buffer)) != -1) {
+                clientOutput.write(buffer, 0, bytesRead);
+            }
         }
 
         clientOutput.flush();

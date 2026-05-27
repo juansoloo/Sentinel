@@ -27,14 +27,13 @@ public class HttpProxy {
 
             while (running) {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("client connected: " + clientSocket.getInetAddress() + "\n");
 
                 ClientHandler handler = new ClientHandler(clientSocket, proxyModel);
                 new Thread(handler).start();
             }
         } catch (IOException e) {
             if (running) {
-                e.printStackTrace();
+                System.out.println("Proxy server failed: " + e.getMessage());
             }
         } finally {
             serverSocket = null;
@@ -48,7 +47,7 @@ public class HttpProxy {
             try {
                 serverSocket.close();
             } catch (IOException e) {
-                e.printStackTrace();
+                System.out.println("Failed to stop proxy: " + e.getMessage());
             }
         }
     }
