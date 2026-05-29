@@ -1,31 +1,33 @@
 package MVC.Models;
 
-import MVC.Interfaces.ProxyModelListener;
-import Proxy.HttpTransaction;
-
 import java.util.ArrayList;
 import java.util.List;
 
-public class ProxyModel implements ProxyModelListener {
+import MVC.Interfaces.ProxyModelListener;
+import Proxy.HttpTransaction;
+
+public class ProxyModel {
     private final List<HttpTransaction> transactions = new ArrayList<>();
     private final List<ProxyModelListener> listeners = new ArrayList<>();
 
     public void addTransaction(HttpTransaction transaction) {
-        transactions.add(transaction);
-        update(transaction);
+        List<ProxyModelListener> listenersSnapshot;
+
+        synchronized (this) {
+            transactions.add(transaction);
+            listenersSnapshot = List.copyOf(listeners);
+        }
+
+        for (ProxyModelListener listener: listenersSnapshot) {
+            listener.update(transaction);
+        }
     }
 
-    public List<HttpTransaction> getTransactions() {
+    public synchronized List<HttpTransaction> getTransactions() {
         return List.copyOf(transactions);
     }
 
-    public void addListener(ProxyModelListener listener) {
+    public synchronized void addListener(ProxyModelListener listener) {
         listeners.add(listener);
-    }
-
-    public void update(HttpTransaction transaction) {
-        for (ProxyModelListener listener : listeners) {
-            listener.update(transaction);
-        }
     }
 }

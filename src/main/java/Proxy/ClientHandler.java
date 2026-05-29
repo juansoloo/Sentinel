@@ -18,11 +18,10 @@ public class ClientHandler implements Runnable {
     private final ConnectTunnel connectTunnel;
     private final MitmTargetSelector mitmTargetSelector;
 
-    public ClientHandler(Socket clientSocket, ProxyModel proxyModel) {
+    public ClientHandler(Socket clientSocket, ProxyModel proxyModel, CertificateManager certificateManager) {
         this.clientSocket = clientSocket;
         this.proxyModel = proxyModel;
     
-        CertificateManager certificateManager = new CertificateManager();
         this.requestParser = new HttpRequestParser();
         this.responseReader = new HttpResponseReader();
         this.mitmTargetSelector = new MitmTargetSelector(certificateManager);

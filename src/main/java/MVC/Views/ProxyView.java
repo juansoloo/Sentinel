@@ -1,9 +1,13 @@
 package MVC.Views;
 
-import MVC.Facade.ScannerFacade;
-import javax.swing.*;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
 
+import MVC.Facade.ScannerFacade;
 import MVC.Interfaces.ProxyModelListener;
 import Proxy.HttpTransaction;
 
@@ -19,6 +23,10 @@ public class ProxyView implements ProxyModelListener {
     private JScrollPane requestPane;
     private JScrollPane responsePane;
     private DefaultTableModel endpointTableModel;
+
+    public JPanel getRoot() {
+        return root;
+    }
 
     public ProxyView() {
         String[] columns = {
