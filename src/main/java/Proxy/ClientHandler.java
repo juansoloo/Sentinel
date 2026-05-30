@@ -1,12 +1,12 @@
 package Proxy;
 
+import MVC.Models.ProxyModel;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-
-import MVC.Models.ProxyModel;
 
 public class ClientHandler implements Runnable {
     private final Socket clientSocket;
@@ -17,10 +17,12 @@ public class ClientHandler implements Runnable {
     private final PlainHttpForwarder plainHttpForwarder;
     private final ConnectTunnel connectTunnel;
     private final MitmTargetSelector mitmTargetSelector;
+    private final InterceptQueue interceptQueue;
 
-    public ClientHandler(Socket clientSocket, ProxyModel proxyModel, CertificateManager certificateManager) {
+    public ClientHandler(Socket clientSocket, ProxyModel proxyModel, CertificateManager certificateManager, InterceptQueue interceptQueue) {
         this.clientSocket = clientSocket;
         this.proxyModel = proxyModel;
+        this.interceptQueue = interceptQueue;
     
         this.requestParser = new HttpRequestParser();
         this.responseReader = new HttpResponseReader();
@@ -31,7 +33,8 @@ public class ClientHandler implements Runnable {
                 proxyModel,
                 requestParser,
                 responseReader,
-                certificateManager
+                certificateManager,
+                interceptQueue
         );
         this.connectTunnel = new ConnectTunnel();
     }
@@ -191,6 +194,9 @@ public class ClientHandler implements Runnable {
             port = target.port();
 
             try {
+                request = interceptQueue.intercept(request);
+                if (request == null) return;
+
                 ProxyResponse response = plainHttpForwarder.forward(target,
                     request,
                     clientInput,

@@ -1,10 +1,10 @@
 package MVC.Models;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import MVC.Interfaces.ProxyModelListener;
 import Proxy.HttpTransaction;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class ProxyModel {
     private final List<HttpTransaction> transactions = new ArrayList<>();

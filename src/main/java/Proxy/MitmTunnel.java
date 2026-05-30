@@ -1,5 +1,10 @@
 package Proxy;
 
+import MVC.Models.ProxyModel;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -7,11 +12,6 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSocket;
-import javax.net.ssl.SSLSocketFactory;
-
-import MVC.Models.ProxyModel;
 import static Proxy.SocketUtils.closeQuietly;
 
 public class MitmTunnel {
@@ -19,15 +19,19 @@ public class MitmTunnel {
     private final HttpRequestParser requestParser;
     private final HttpResponseReader responseReader;
     private final CertificateManager certificateManager;
+    private final InterceptQueue interceptQueue;
 
     public MitmTunnel(ProxyModel proxyModel,
                     HttpRequestParser requestParser,
                     HttpResponseReader responseReader,
-                    CertificateManager certificateManager) {
+                    CertificateManager certificateManager,
+                    InterceptQueue interceptQueue
+    ) {
         this.proxyModel = proxyModel;
         this.requestParser = requestParser;
         this.responseReader = responseReader;
         this.certificateManager = certificateManager;
+        this.interceptQueue = interceptQueue;
     }
 
     public void handle(HostAndPort target,
@@ -94,6 +98,9 @@ public class MitmTunnel {
                 if (httpsRequest == null) {
                     throw new IOException("Invalid HTTPS request inside MITM tunnel");
                 }
+
+                httpsRequest = interceptQueue.intercept(httpsRequest);
+                if (httpsRequest == null) return;
 
                 forwardMitmHttpsRequest(
                         httpsRequest,
