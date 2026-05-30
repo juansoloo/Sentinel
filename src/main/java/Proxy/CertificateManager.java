@@ -1,5 +1,7 @@
 package Proxy;
 
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -12,9 +14,6 @@ import java.security.PrivateKey;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Base64;
-
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
 
 /**
  * Root CA helpers currently load the root keystore twice if both
@@ -44,10 +43,6 @@ public class CertificateManager {
                 }
             }
         }
-    }
-
-    private boolean rootCaExists() {
-        return Files.exists(Path.of(ROOT_CA_KEYSTORE_PATH));
     }
 
     private void exportRootCaCertificate(X509Certificate rootCaCertificate) throws Exception {
@@ -111,7 +106,7 @@ public class CertificateManager {
     }
 
     private void ensureRootCaExists() throws Exception {
-        if (rootCaExists()) {
+        if (Files.exists(Path.of(ROOT_CA_KEYSTORE_PATH))) {
             return;
         }
 
@@ -142,25 +137,24 @@ public class CertificateManager {
         }
 
         return loadServerContextFromStore(
-            cachePathFor(normalizedHost).toString(),
-            GENERATED_CERT_PASSWORD);
+            cachePathFor(normalizedHost).toString()
+        );
     }
 
     private SSLContext loadServerContextFromStore(
-            String keyStorePath,
-            char[] keyStorePassword)
+            String keyStorePath)
         throws Exception {
 
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
 
         try (InputStream keyStoreInput = new FileInputStream(keyStorePath)) {
-            keyStore.load(keyStoreInput, keyStorePassword);
+            keyStore.load(keyStoreInput, CertificateManager.GENERATED_CERT_PASSWORD);
         }
 
         KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(
                 KeyManagerFactory.getDefaultAlgorithm());
 
-        keyManagerFactory.init(keyStore, keyStorePassword);
+        keyManagerFactory.init(keyStore, CertificateManager.GENERATED_CERT_PASSWORD);
 
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(
