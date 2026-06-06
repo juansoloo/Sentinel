@@ -10,6 +10,8 @@ import java.util.List;
 
 public class HttpResponseReader {
     private static final int HEADER_TERMINATOR = 0x0D0A0D0A;
+    private static final int MAX_BODY_CAPTURE = 1024 * 1024;
+    private static final int MAX_HEADER_SIZE = 1024 * 1024;
 
     ProxyResponse handleServerResponse(InputStream serverInput, OutputStream clientOutput)
             throws IOException {
@@ -32,6 +34,11 @@ public class HttpResponseReader {
             }
 
             headerBytes.write(data);
+
+            if (headerBytes.size() > MAX_HEADER_SIZE) {
+                throw new IOException("Header size limit exceeded.");
+            }
+
             lastFourBytes = ((lastFourBytes << 8) | data) & 0xFFFFFFFF;
 
         } while (lastFourBytes != HEADER_TERMINATOR);
@@ -41,7 +48,7 @@ public class HttpResponseReader {
 
         String[] lines = headerString.split("\r\n");
 
-        for (String line : lines ) {
+        for (String line : lines) {
             if (line.isEmpty()) {
                 continue;
             }
@@ -63,7 +70,7 @@ public class HttpResponseReader {
                 }
 
                 String name = line.substring(0, colonIndex).trim();
-                String value = line.substring(colonIndex+ 1).trim();
+                String value = line.substring(colonIndex + 1).trim();
 
                 responseHeaders.add(new HttpHeader(name, value));
 
@@ -83,18 +90,30 @@ public class HttpResponseReader {
 
         clientOutput.write(headerBytes.toByteArray());
 
+        byte[] capturedBody;
+        ByteArrayOutputStream capturedArray = new ByteArrayOutputStream();
+
         if (contentLength > 0) {
-            SocketUtils.copyExact(serverInput, clientOutput, contentLength);
+            capturedBody = SocketUtils.copyExactCapture(serverInput, clientOutput, contentLength);
         } else if (contentLength == 0) {
-            // No response body to forward
+            capturedBody = new byte[0];
         } else {
+            int totalCaptured = 0;
+
             while ((bytesRead = serverInput.read(buffer)) != -1) {
                 clientOutput.write(buffer, 0, bytesRead);
+
+                if (totalCaptured < MAX_BODY_CAPTURE) {
+                    capturedArray.write(buffer, 0, bytesRead);
+                    totalCaptured += bytesRead;
+                }
             }
+
+            capturedBody = capturedArray.toByteArray();
         }
 
         clientOutput.flush();
 
-        return new ProxyResponse(version, statusCode, reasonPhrase, responseHeaders);
+        return new ProxyResponse(version, statusCode, reasonPhrase, responseHeaders, capturedBody);
     }
 }

@@ -8,7 +8,7 @@ import java.util.concurrent.ExecutionException;
 public class InterceptQueue {
     private volatile boolean intercepting = false;
     private volatile InterceptListener listener;
-    private List<InterceptedRequest> pending = new CopyOnWriteArrayList<>();
+    private final List<InterceptedRequest> pending = new CopyOnWriteArrayList<>();
 
     public void setIntercepting(boolean on) {
         this.intercepting = on;
@@ -23,8 +23,6 @@ public class InterceptQueue {
     }
 
     public ProxyRequest intercept(ProxyRequest request) {
-        System.out.println("intercept() called, intercepting=" + intercepting);
-
         if (!intercepting || listener == null) {
             return request;
         }

@@ -1,5 +1,7 @@
 import MVC.Models.ProxyModel;
+import MVC.Views.FilterView;
 import MVC.Views.InterceptView;
+import MVC.Views.ProxyTableContextMenu;
 import MVC.Views.ProxyView;
 import Proxy.HttpProxy;
 import Proxy.InterceptQueue;
@@ -12,11 +14,21 @@ public class Main {
         InterceptQueue interceptQueue = new InterceptQueue();
     
         ProxyView proxyView = new ProxyView();
+        FilterView filterView = new FilterView(proxyView.getSorter(), proxyView.getListModel());
+
+        ProxyTableContextMenu actionWindow = new ProxyTableContextMenu(
+                proxyView.getEndpointTable(),
+                proxyView.getListModel(),
+                filterView::applyFilter,
+                proxyView::clearHistory
+        );
+
         InterceptView interceptView = new InterceptView(interceptQueue);
 
         JTabbedPane interceptTab = new JTabbedPane();
         interceptTab.addTab("Proxy", proxyView.getRoot());
         interceptTab.addTab("Intercept", interceptView.getRoot());
+        interceptTab.addTab("Filter", filterView.getRoot());
 
         proxyModel.addListener(proxyView);
         

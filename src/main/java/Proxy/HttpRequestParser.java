@@ -9,6 +9,7 @@ import java.util.List;
 
 public class HttpRequestParser {
     private static final int HEADER_TERMINATOR = 0x0D0A0D0A;
+    private static final int MAX_HEADER_SIZE = 1024 * 1024;
 
     public HttpRequestParser() {
 
@@ -22,6 +23,10 @@ public class HttpRequestParser {
 
         while ((b = input.read()) != -1) {
             headerBytes.write(b);
+
+            if (headerBytes.size() > MAX_HEADER_SIZE) {
+                throw new IOException("Header size limit exceeded");
+            }
 
             lastFourBytes = ((lastFourBytes << 8) | b) & 0xFFFFFFFF;
 
@@ -42,11 +47,12 @@ public class HttpRequestParser {
         return pathRaw;
     }
 
-    ProxyRequest parseClientRequest(byte[] headerBytes) {
+    public ProxyRequest parseClientRequest(byte[] headerBytes) {
         String headerText = new String(headerBytes, StandardCharsets.ISO_8859_1);
 
         String[] lines = headerText.split("\r\n");
 
+        // maybe create function to do extract request line
         if (lines.length == 0 || lines[0].isEmpty()) {
             return null;
         }
@@ -60,6 +66,8 @@ public class HttpRequestParser {
         String method = requestsParts[0];
         String pathRaw = requestsParts[1];
         String httpVersion = requestsParts[2];
+
+        // ___________________________________________________________
 
         String host = null;
         int contentLength = 0;
@@ -111,6 +119,6 @@ public class HttpRequestParser {
 
         String path = normalizePath(pathRaw);
 
-        return new ProxyRequest(method, path, httpVersion, host, headers, contentLength);
+        return new ProxyRequest(method, path, httpVersion, host, headers, contentLength, new byte[0]);
     }
 }

@@ -8,6 +8,6 @@ public class MitmTargetSelector {
     }
 
     public boolean shouldMitm(HostAndPort target) {
-        return certificateManager.hasCertificateFor(target.host());
+        return certificateManager.canMitmHost(target.host());
     }
 }

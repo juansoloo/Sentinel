@@ -7,5 +7,6 @@ public record ProxyRequest(String method,
                            String httpVersion,
                            String host,
                            List<String> headers,
-                           int contentLength) {}
+                           int contentLength,
+                           byte[] body) {}
 

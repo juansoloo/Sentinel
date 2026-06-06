@@ -102,7 +102,7 @@ public class MitmTunnel {
                 httpsRequest = interceptQueue.intercept(httpsRequest);
                 if (httpsRequest == null) return;
 
-                forwardMitmHttpsRequest(
+                httpsRequest = forwardMitmHttpsRequest(
                         httpsRequest,
                         decryptedClientInput,
                         serverOutput);
@@ -155,7 +155,7 @@ public class MitmTunnel {
             String value = header.substring(colonIndex + 1).trim();
 
             if (name.equalsIgnoreCase("Connection")
-                    & value.equalsIgnoreCase("close")) {
+                    && value.equalsIgnoreCase("close")) {
                 return true;
             }
         }
@@ -163,7 +163,7 @@ public class MitmTunnel {
         return false;
     }
 
-    private void forwardMitmHttpsRequest(ProxyRequest request,
+    private ProxyRequest forwardMitmHttpsRequest(ProxyRequest request,
                                         InputStream decryptedClientInput,
                                         OutputStream serverOutput) throws IOException {
         StringBuilder forwardedRequest = new StringBuilder();
@@ -198,14 +198,26 @@ public class MitmTunnel {
         serverOutput.write(
                 forwardedRequest.toString().getBytes(StandardCharsets.ISO_8859_1));
 
+        byte[] requestBody;
+
         if (request.contentLength() > 0) {
-            SocketUtils.copyExact(
+            requestBody = SocketUtils.copyExactCapture(
                     decryptedClientInput,
                     serverOutput,
-                    request.contentLength()
-            );
+                    request.contentLength());
+        } else {
+            requestBody = new byte[0];
         }
 
         serverOutput.flush();
+
+        return new ProxyRequest(
+                request.method(),
+                request.path(),
+                request.httpVersion(),
+                request.host(),
+                request.headers(),
+                request.contentLength(),
+                requestBody);
     }
 }

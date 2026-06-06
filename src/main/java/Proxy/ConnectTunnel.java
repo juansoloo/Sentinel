@@ -27,8 +27,8 @@ public class ConnectTunnel {
                     new InetSocketAddress(target.host(), target.port()),
                     timeout);
 
-            serverSocket.setSoTimeout(0);
-            clientSocket.setSoTimeout(0);
+            serverSocket.setSoTimeout(90000);
+            clientSocket.setSoTimeout(90000);
 
             clientOutput.write("HTTP/1.1 200 Connection Established\r\n\r\n"
                     .getBytes(StandardCharsets.ISO_8859_1));

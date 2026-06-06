@@ -1,12 +1,14 @@
 package Proxy;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 
 public class SocketUtils {
-    static void copyExact(InputStream in, OutputStream out, int byteCount) throws IOException {
+    static byte[] copyExactCapture(InputStream in, OutputStream out, int byteCount) throws IOException {
+        ByteArrayOutputStream captured = new ByteArrayOutputStream(byteCount);
         byte[] buffer = new byte[8192];
         int remaining = byteCount;
 
@@ -18,8 +20,12 @@ public class SocketUtils {
             }
 
             out.write(buffer, 0, read);
+            captured.write(buffer,0,read);
+
             remaining -= read;
         }
+
+        return captured.toByteArray();
     }
 
     static void copyTunnel(InputStream input, OutputStream output) throws IOException{

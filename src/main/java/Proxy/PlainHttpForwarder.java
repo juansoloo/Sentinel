@@ -14,7 +14,7 @@ public class PlainHttpForwarder {
         this.responseReader = responseReader;
     }
 
-    public ProxyResponse forward(HostAndPort target,
+    public HttpTransaction forward(HostAndPort target,
                                 ProxyRequest request,
                                 InputStream clientInput,
                                 OutputStream clientOutput)
@@ -58,13 +58,31 @@ public class PlainHttpForwarder {
 
             serverOutput.write(forwardedRequest.toString().getBytes(StandardCharsets.ISO_8859_1));
 
+            byte[] requestBody;
+
             if (request.contentLength() > 0) {
-                SocketUtils.copyExact(clientInput, serverOutput, request.contentLength());
+                requestBody = SocketUtils.copyExactCapture(
+                        clientInput,
+                        serverOutput,
+                        request.contentLength());
+            } else {
+                requestBody = new byte[0];
             }
 
             serverOutput.flush();
 
-            return responseReader.handleServerResponse(serverInput, clientOutput);
+            ProxyResponse response = responseReader.handleServerResponse(serverInput, clientOutput);
+
+            ProxyRequest fullRequest = new ProxyRequest(
+                    request.method(),
+                    request.path(),
+                    request.httpVersion(),
+                    request.host(),
+                    request.headers(),
+                    request.contentLength(),
+                    requestBody);
+
+            return new HttpTransaction(fullRequest, response);
         }
     }
 }

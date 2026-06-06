@@ -197,19 +197,18 @@ public class ClientHandler implements Runnable {
                 request = interceptQueue.intercept(request);
                 if (request == null) return;
 
-                ProxyResponse response = plainHttpForwarder.forward(target,
-                    request,
-                    clientInput,
-                    clientOutput);
-                
-                HttpTransaction transaction = new HttpTransaction(request, response);
+                HttpTransaction transaction = plainHttpForwarder.forward(target,
+                        request,
+                        clientInput,
+                        clientOutput);
+
                 proxyModel.addTransaction(transaction);
 
                 System.out.println(
-                        request.method() + " " +
-                                request.host() + " " +
-                                request.path() + " -> " +
-                                response.statusCode());
+                        transaction.request().method() + " " +
+                        transaction.request().host() + " " +
+                        transaction.request().path() + " -> " +
+                        transaction.response().statusCode());
 
             } catch (IOException e) {
                 System.out.println("Forwarding failed for " + host + ":" + port + " - " + e.getMessage());

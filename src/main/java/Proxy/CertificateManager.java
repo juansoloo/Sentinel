@@ -3,14 +3,14 @@ package Proxy;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.security.KeyPair;
-import java.security.KeyStore;
-import java.security.PrivateKey;
+import java.security.*;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Base64;
@@ -25,9 +25,37 @@ public class CertificateManager {
     private static final String ROOT_CA_CERT_PATH = "certs/root-ca.crt";
     private static final String ROOT_CA_CERT_ALIAS = "sentinel-root-ca";
     private static final String CERT_CACHE_DIR = "cert-cache";
-    private static final char[] GENERATED_CERT_PASSWORD = "changeit".toCharArray();
-    
+    private static final char[] KEYSTORE_PASSWORD = loadPassword();
     private final CertificateGenerator certificateGenerator;
+
+    private static char[] loadPassword() {
+        Path passwordPath = Path.of(System.getProperty("user.home"), ".sentinel", "keystore.pwd");
+        char[] pwdFile;
+
+        try {
+            if (Files.exists(passwordPath)) {
+                pwdFile = Files.readString(passwordPath, StandardCharsets.UTF_8).trim().toCharArray();
+            } else {
+                SecureRandom secureRandom = new SecureRandom();
+                byte[] salty = new byte[32];
+
+                secureRandom.nextBytes(salty);
+                String pwdStr = Base64.getEncoder().encodeToString(salty);
+                pwdFile = pwdStr.toCharArray();
+
+                Files.createDirectories(passwordPath.getParent());
+                Files.writeString(
+                        passwordPath,
+                        pwdStr,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.TRUNCATE_EXISTING);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        return pwdFile;
+    }
 
     private void clearCertificateCache() throws Exception {
         Path cacheDir = Path.of(CERT_CACHE_DIR);
@@ -89,19 +117,19 @@ public class CertificateManager {
         Files.createDirectories(rootCaPath.getParent());
 
         KeyStore rootStore = KeyStore.getInstance("PKCS12");
-        rootStore.load(null, GENERATED_CERT_PASSWORD);
+        rootStore.load(null, KEYSTORE_PASSWORD);
 
         rootStore.setKeyEntry(
             ROOT_CA_CERT_ALIAS,
             rootCaKeyPair.getPrivate(),
-            GENERATED_CERT_PASSWORD,
+            KEYSTORE_PASSWORD,
             new Certificate[]{rootCaCertificate});
 
         try (OutputStream output = Files.newOutputStream(
                 rootCaPath,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING)) {
-            rootStore.store(output, GENERATED_CERT_PASSWORD);
+            rootStore.store(output, KEYSTORE_PASSWORD);
         }
     }
 
@@ -148,13 +176,13 @@ public class CertificateManager {
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
 
         try (InputStream keyStoreInput = new FileInputStream(keyStorePath)) {
-            keyStore.load(keyStoreInput, CertificateManager.GENERATED_CERT_PASSWORD);
+            keyStore.load(keyStoreInput, KEYSTORE_PASSWORD);
         }
 
         KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(
                 KeyManagerFactory.getDefaultAlgorithm());
 
-        keyManagerFactory.init(keyStore, CertificateManager.GENERATED_CERT_PASSWORD);
+        keyManagerFactory.init(keyStore, KEYSTORE_PASSWORD);
 
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(
@@ -172,7 +200,7 @@ public class CertificateManager {
         KeyStore rootStore = KeyStore.getInstance("PKCS12");
 
         try (InputStream input = new FileInputStream(ROOT_CA_KEYSTORE_PATH)) {
-            rootStore.load(input, GENERATED_CERT_PASSWORD);
+            rootStore.load(input, KEYSTORE_PASSWORD);
         }
 
         return rootStore;
@@ -183,7 +211,7 @@ public class CertificateManager {
 
         return (PrivateKey) rootStore.getKey(
             ROOT_CA_CERT_ALIAS,
-            GENERATED_CERT_PASSWORD
+            KEYSTORE_PASSWORD
         );
     }
 
@@ -204,7 +232,7 @@ public class CertificateManager {
         Files.createDirectories(cachePath.getParent());
 
         KeyStore hostStore = KeyStore.getInstance("PKCS12");
-        hostStore.load(null, GENERATED_CERT_PASSWORD);
+        hostStore.load(null, KEYSTORE_PASSWORD);
 
         Certificate[] certificateChain = new Certificate[] {
             hostCertificate,
@@ -214,14 +242,14 @@ public class CertificateManager {
         hostStore.setKeyEntry(
             host,
             hostKeyPair.getPrivate(),
-            GENERATED_CERT_PASSWORD,
+            KEYSTORE_PASSWORD,
             certificateChain);
 
         try (OutputStream output = Files.newOutputStream(
                 cachePath,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING)) {
-            hostStore.store(output, GENERATED_CERT_PASSWORD);
+            hostStore.store(output, KEYSTORE_PASSWORD);
         }
     }
 
@@ -257,7 +285,7 @@ public class CertificateManager {
         return Files.exists(cachePathFor(host));
     }
 
-    public boolean hasCertificateFor(String host) {
+    public boolean canMitmHost(String host) {
         return isValidHost(host);
     }
 

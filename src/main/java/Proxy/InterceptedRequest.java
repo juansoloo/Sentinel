@@ -14,8 +14,8 @@ public class InterceptedRequest {
         return request;
     }
 
-    public void forward() {
-        future.complete(request);
+    public void forwardEdited(ProxyRequest edited) {
+        future.complete(edited);
     }
 
     public void drop() {
