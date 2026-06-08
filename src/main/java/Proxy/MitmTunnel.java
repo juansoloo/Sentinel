@@ -115,12 +115,12 @@ public class MitmTunnel {
 
                 proxyModel.addTransaction(transaction);
 
-                System.out.println(
-                        "MITM " +
-                                transaction.request().method() + " " +
-                                transaction.request().host() + " " +
-                                transaction.request().path() + " -> " +
-                                transaction.response().statusCode());
+//                System.out.println(
+//                        "MITM " +
+//                                transaction.request().method() + " " +
+//                                transaction.request().host() + " " +
+//                                transaction.request().path() + " -> " +
+//                                transaction.response().statusCode());
 
                 if (usesConnectionClose(httpsRequest.headers())) {
                     return;

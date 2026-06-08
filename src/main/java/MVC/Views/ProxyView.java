@@ -5,6 +5,10 @@ import Proxy.HttpHeader;
 import Proxy.HttpTransaction;
 import Proxy.ProxyRequest;
 import Proxy.ProxyResponse;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -26,6 +30,7 @@ public class ProxyView implements ProxyModelListener {
     private List<HttpTransaction> record = new ArrayList<>();
     private TableRowSorter<DefaultTableModel> sorter;
     private DefaultListModel<String> listModel;
+    private static final Gson PRETTY_GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public JPanel getRoot() {
         return root;
@@ -130,9 +135,26 @@ public class ProxyView implements ProxyModelListener {
 
         sb.append("\r\n");
 
+        String contentType = "";
+
+        for (String header : req.headers()) {
+            if (header.toLowerCase().startsWith("content-type:")) {
+                contentType = header.substring(header.indexOf(":") + 1).trim();
+            }
+        }
+
         if (req.body() != null && req.body().length > 0) {
             String body = new String(req.body(), StandardCharsets.UTF_8);
-            sb.append(body);
+            if (contentType.contains("application/json")) {
+                try {
+                    JsonElement parsed = JsonParser.parseString(body);
+                    sb.append(PRETTY_GSON.toJson(parsed));
+                } catch (Exception e) {
+                    sb.append(body);
+                }
+            } else {
+                sb.append(body);
+            }
         }
 
         return sb.toString();
@@ -155,9 +177,26 @@ public class ProxyView implements ProxyModelListener {
 
         sb.append("\r\n");
 
+        String contentType = "";
+
+        for (HttpHeader header : res.headers()) {
+            if (header.name().equalsIgnoreCase("Content-Type")) {
+                contentType = header.value();
+            }
+        }
+
         if (res.body() != null && res.body().length > 0) {
             String body = new String(res.body(), StandardCharsets.UTF_8);
-            sb.append(body);
+            if (contentType.contains("application/json")) {
+                try {
+                    JsonElement parsed = JsonParser.parseString(body);
+                    sb.append(PRETTY_GSON.toJson(parsed));
+                } catch (Exception e) {
+                    sb.append(body);
+                }
+            } else {
+                sb.append(body);
+            }
         }
 
         return sb.toString();
