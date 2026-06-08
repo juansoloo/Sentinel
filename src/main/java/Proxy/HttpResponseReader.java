@@ -153,8 +153,6 @@ public class HttpResponseReader {
         byte[] capturedBody;
         boolean containsFilter = isContainsFilter(responseHeaders);
 
-        ByteArrayOutputStream capturedArray = new ByteArrayOutputStream();
-
         if (containsFilter) {
             capturedBody = new byte[0];
 
@@ -168,6 +166,7 @@ public class HttpResponseReader {
             capturedBody = new byte[0];
         } else {
             int totalCaptured = 0;
+            ByteArrayOutputStream capturedArray = new ByteArrayOutputStream();
 
             while ((bytesRead = serverInput.read(buffer)) != -1) {
                 clientOutput.write(buffer, 0, bytesRead);
