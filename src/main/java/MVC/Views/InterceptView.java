@@ -20,6 +20,7 @@ public class InterceptView implements InterceptQueue.InterceptListener {
     private JButton forwardButton;
     private JButton dropButton;
     private JToggleButton interceptToggle;
+    private JPanel topBar;
 
     public InterceptView(InterceptQueue interceptQueue) {
         interceptQueue.setListener(this);
@@ -39,7 +40,7 @@ public class InterceptView implements InterceptQueue.InterceptListener {
             }
         });
 
-        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        topBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
         topBar.add(interceptToggle);
         root.add(topBar, BorderLayout.NORTH);
 

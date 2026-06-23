@@ -1,22 +1,23 @@
 package MVC.Views;
 
-import MVC.Interfaces.ProxyModelListener;
-import Proxy.HttpHeader;
-import Proxy.HttpTransaction;
-import Proxy.ProxyRequest;
-import Proxy.ProxyResponse;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
+import java.awt.BorderLayout;
+import java.awt.Font;
+import java.util.function.IntConsumer;
 
-import javax.swing.*;
+import javax.swing.DefaultListModel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTable;
+import javax.swing.JTextArea;
+import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
-import java.awt.*;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
+
+import MVC.Interfaces.ProxyModelListener;
+import Proxy.HttpHeader;
+import Proxy.HttpMessageFormatter;
+import Proxy.HttpTransaction;
 
 public class ProxyView implements ProxyModelListener {
     private final JPanel root;
@@ -27,26 +28,9 @@ public class ProxyView implements ProxyModelListener {
     private JScrollPane requestPane;
     private JScrollPane responsePane;
     private DefaultTableModel endpointTableModel;
-    private List<HttpTransaction> record = new ArrayList<>();
+    private IntConsumer onRowSelected;
     private TableRowSorter<DefaultTableModel> sorter;
     private DefaultListModel<String> listModel;
-    private static final Gson PRETTY_GSON = new GsonBuilder().setPrettyPrinting().create();
-
-    public JPanel getRoot() {
-        return root;
-    }
-
-    public TableRowSorter<DefaultTableModel> getSorter() {
-        return sorter;
-    }
-
-    public DefaultListModel<String> getListModel() {
-        return listModel;
-    }
-
-    public JTable getEndpointTable() {
-        return endpointTable;
-    }
 
     public ProxyView() {
         endpointTable = new JTable();
@@ -97,120 +81,57 @@ public class ProxyView implements ProxyModelListener {
         endpointTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 int row = endpointTable.getSelectedRow();
-                if (row >= 0) {
+                
+                if (row >= 0 && onRowSelected != null) {
                     int modelRow = endpointTable.convertRowIndexToModel(row);
-                    if (modelRow >= 0 && modelRow < record.size()) {
-                        HttpTransaction tx = record.get(modelRow);
-                        requestTextArea.setText(renderRequest(tx.request()));
-                        requestTextArea.setCaretPosition(0);
-
-                        responseTextArea.setText(renderResponse(tx.response()));
-                        responseTextArea.setCaretPosition(0);
-                    }
+                    onRowSelected.accept(modelRow);
                 }
             }
         });
     }
 
-    public void clearHistory() {
-        endpointTableModel.setRowCount(0);
+    public JPanel getRoot() {
+        return root;
+    }
 
+    public TableRowSorter<DefaultTableModel> getSorter() {
+        return sorter;
+    }
+
+    public DefaultListModel<String> getListModel() {
+        return listModel;
+    }
+
+    public JTable getEndpointTable() {
+        return endpointTable;
+    }
+
+    public void setOnRowSelected(IntConsumer onRowSelected) {
+        this.onRowSelected = onRowSelected;
+    }
+
+    public void displayTransaction(HttpTransaction transaction) {
+        if (transaction == null) {
+            requestTextArea.setText("");
+            responseTextArea.setText("");
+            return;
+        }
+
+        requestTextArea.setText(HttpMessageFormatter.renderRequest(transaction.request()));
+        requestTextArea.setCaretPosition(0);
+
+        responseTextArea.setText(HttpMessageFormatter.renderResponse(transaction.response()));
+        responseTextArea.setCaretPosition(0);
+    }
+
+    public void clearHistoryDisplay() {
+        endpointTableModel.setRowCount(0);
         requestTextArea.setText("");
         responseTextArea.setText("");
-
-        record.clear();
     }
-
-    private String renderRequest(ProxyRequest req) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(req.method())
-                .append(" ")
-                .append(req.path())
-                .append(" ")
-                .append(req.httpVersion())
-                .append("\r\n");
-        for (String header : req.headers()) {
-            sb.append(header).append("\r\n");
-        }
-
-        sb.append("\r\n");
-
-        String contentType = "";
-
-        for (String header : req.headers()) {
-            if (header.toLowerCase().startsWith("content-type:")) {
-                contentType = header.substring(header.indexOf(":") + 1).trim();
-            }
-        }
-
-        if (req.body() != null && req.body().length > 0) {
-            String body = new String(req.body(), StandardCharsets.UTF_8);
-            if (contentType.contains("application/json")) {
-                try {
-                    JsonElement parsed = JsonParser.parseString(body);
-                    sb.append(PRETTY_GSON.toJson(parsed));
-                } catch (Exception e) {
-                    sb.append(body);
-                }
-            } else {
-                sb.append(body);
-            }
-        }
-
-        return sb.toString();
-    }
-
-    private String renderResponse(ProxyResponse res) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(res.httpVersion())
-                .append(" ")
-                .append(res.statusCode())
-                .append(" ")
-                .append(res.reasonPhrase())
-                .append("\r\n");
-        for (HttpHeader header : res.headers()) {
-            sb.append(header.name())
-                    .append(": ")
-                    .append(header.value())
-                    .append("\r\n");
-        }
-
-        sb.append("\r\n");
-
-        String contentType = "";
-
-        for (HttpHeader header : res.headers()) {
-            if (header.name().equalsIgnoreCase("Content-Type")) {
-                contentType = header.value();
-            }
-        }
-
-        if (res.body() != null && res.body().length > 0) {
-            String body = new String(res.body(), StandardCharsets.UTF_8);
-            if (contentType.contains("application/json")) {
-                try {
-                    JsonElement parsed = JsonParser.parseString(body);
-                    sb.append(PRETTY_GSON.toJson(parsed));
-                } catch (Exception e) {
-                    sb.append(body);
-                }
-            } else {
-                sb.append(body);
-            }
-        }
-
-        return sb.toString();
-    }
-
-    public void displayScannerData() {}
-
-    public void displayReport() {}
-
-    public void displayError() {}
 
     public void update(HttpTransaction transaction) {
         SwingUtilities.invokeLater(() -> {
-            record.add(transaction);
 
             String length = "";
             String mimeType = "";

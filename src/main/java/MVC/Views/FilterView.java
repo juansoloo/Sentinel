@@ -1,15 +1,24 @@
 package MVC.Views;
 
-import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.table.TableRowSorter;
-import java.awt.*;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+
+import javax.swing.DefaultListModel;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JList;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextField;
+import javax.swing.RowFilter;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableRowSorter;
 
 public class FilterView {
     private JPanel root;
@@ -83,13 +92,24 @@ public class FilterView {
 
     }
 
+    public void addHostFilter(String host) {
+        if (host == null || host.isBlank()) {
+            return;
+        }
+
+        if (!listModel.contains(host)) {
+            listModel.addElement(host);
+        }
+
+        applyFilter();
+    }
+
     public void applyFilter() {
         try {
             List<RowFilter<Object, Object>> searchParams = new ArrayList<>();
             List<RowFilter<Object, Object>> hostFilters = new ArrayList<>();
 
             for (int i = 0; i < listModel.size(); i++) {
-
                 String listELem = listModel.getElementAt(i).toString();
                 hostFilters.add(RowFilter.regexFilter(Pattern.quote(listELem), 1));
             }

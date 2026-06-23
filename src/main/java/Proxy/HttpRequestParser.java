@@ -67,8 +67,6 @@ public class HttpRequestParser {
         String pathRaw = requestsParts[1];
         String httpVersion = requestsParts[2];
 
-        // ___________________________________________________________
-
         String host = null;
         int contentLength = 0;
         List<String> headers = new ArrayList<>();

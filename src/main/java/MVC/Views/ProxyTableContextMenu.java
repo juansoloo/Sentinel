@@ -1,49 +1,38 @@
 package MVC.Views;
 
-import javax.swing.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-public class ProxyTableContextMenu {
-    private JPopupMenu actionWindow;
-    private Runnable applyFilter;
-    private JTable table;
-    private DefaultListModel<String> listModel;
-    private String pendingHost;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
+import javax.swing.JTable;
+import javax.swing.SwingUtilities;
 
+public class ProxyTableContextMenu {
+    private final JTable table;
+    private final JPopupMenu actionWindow;
 
     public ProxyTableContextMenu(JTable table,
-                                 DefaultListModel<String> listModel,
-                                 Runnable applyFilter,
-                                 Runnable clearHistory) {
+                                Runnable onAddHostFilter,
+                                Runnable onClearHistory,
+                                Runnable onSendToRepeater) {
         this.table = table;
-        this.listModel = listModel;
-        this.applyFilter = applyFilter;
 
         actionWindow = new JPopupMenu();
+
         JMenuItem filterItem = new JMenuItem("Add to host filter");
         JMenuItem clearItem = new JMenuItem("Clear History");
+        JMenuItem repeaterItem = new JMenuItem("Send to Repeater");
+
         actionWindow.add(filterItem);
         actionWindow.add(clearItem);
+        actionWindow.add(repeaterItem);
 
-        filterItem.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (!listModel.contains(pendingHost)) {
-                    listModel.addElement(pendingHost);
-                    applyFilter.run();
-                }
-            }
-        });
+        filterItem.addActionListener(e -> onAddHostFilter.run());
 
-        clearItem.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                clearHistory.run();
-            }
-        });
+        repeaterItem.addActionListener(e -> onSendToRepeater.run());
+
+        clearItem.addActionListener(e -> onClearHistory.run());
 
         table.addMouseListener(new MouseAdapter() {
             @Override
@@ -52,7 +41,6 @@ public class ProxyTableContextMenu {
                     int rowClicked = table.rowAtPoint(e.getPoint());
                     if (rowClicked >= 0) {
                         table.setRowSelectionInterval(rowClicked,rowClicked);
-                        pendingHost = table.getValueAt(rowClicked, 1).toString();
                         actionWindow.show(table, e.getX(), e.getY());
                     }
                 }
