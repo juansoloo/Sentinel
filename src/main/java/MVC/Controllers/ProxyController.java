@@ -21,8 +21,7 @@ public class ProxyController {
                             InterceptView interceptView,
                             RepeaterView repeaterView,
                             FilterView filterView,
-                            ProxyModel proxyModel
-                        ) {
+                            ProxyModel proxyModel) {
         this.proxyView = proxyView;
         this.interceptView = interceptView;
         this.repeaterView = repeaterView;
