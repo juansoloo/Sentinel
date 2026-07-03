@@ -2,6 +2,7 @@ import javax.swing.JFrame;
 import javax.swing.JTabbedPane;
 
 import MVC.Controllers.ProxyController;
+import MVC.Controllers.RepeaterController;
 import MVC.Models.ProxyModel;
 import MVC.Views.FilterView;
 import MVC.Views.InterceptView;
@@ -9,7 +10,9 @@ import MVC.Views.ProxyTableContextMenu;
 import MVC.Views.ProxyView;
 import MVC.Views.RepeaterView;
 import Proxy.HttpProxy;
+import Proxy.HttpResponseReader;
 import Proxy.InterceptQueue;
+import Proxy.RepeaterClient;
 
 public class Main {
     public static void main(String[] args) throws Exception {
@@ -24,10 +27,13 @@ public class Main {
                 proxyView.getListModel()
         );
 
+        RepeaterClient repeaterClient = new RepeaterClient(new HttpResponseReader());
+        RepeaterController repeaterController = new RepeaterController(repeaterView, repeaterClient);
+        repeaterView.setOnSend(repeaterController::onSend);
+
         ProxyController controller = new ProxyController(
                 proxyView,
-                interceptView,
-                repeaterView,
+                repeaterController,
                 filterView,
                 proxyModel
         );

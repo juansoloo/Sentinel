@@ -1,23 +1,15 @@
 package MVC.Views;
 
-import java.awt.BorderLayout;
-import java.awt.Font;
-import java.util.function.IntConsumer;
-
-import javax.swing.DefaultListModel;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JSplitPane;
-import javax.swing.JTable;
-import javax.swing.JTextArea;
-import javax.swing.SwingUtilities;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.table.TableRowSorter;
-
 import MVC.Interfaces.ProxyModelListener;
 import Proxy.HttpHeader;
 import Proxy.HttpMessageFormatter;
 import Proxy.HttpTransaction;
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableRowSorter;
+import java.awt.*;
+import java.util.function.IntConsumer;
 
 public class ProxyView implements ProxyModelListener {
     private final JPanel root;

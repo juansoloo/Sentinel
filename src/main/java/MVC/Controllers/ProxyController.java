@@ -2,29 +2,23 @@ package MVC.Controllers;
 
 import MVC.Models.ProxyModel;
 import MVC.Views.FilterView;
-import MVC.Views.InterceptView;
 import MVC.Views.ProxyView;
-import MVC.Views.RepeaterView;
-import Proxy.HttpMessageFormatter;
 import Proxy.HttpTransaction;
 import Proxy.ProxyRequest;
 
 public class ProxyController {
-    private ProxyView proxyView;
-    private InterceptView interceptView;
-    private RepeaterView repeaterView;
-    private FilterView filterView;
-    private ProxyModel proxyModel;
+    private final ProxyView proxyView;
+    private final RepeaterController repeaterController;
+    private final FilterView filterView;
+    private final ProxyModel proxyModel;
     private int selectedModelRow = -1;
 
     public ProxyController(ProxyView proxyView,
-                            InterceptView interceptView,
-                            RepeaterView repeaterView,
+                            RepeaterController repeaterController,
                             FilterView filterView,
                             ProxyModel proxyModel) {
         this.proxyView = proxyView;
-        this.interceptView = interceptView;
-        this.repeaterView = repeaterView;
+        this.repeaterController = repeaterController;
         this.filterView = filterView;
         this.proxyModel = proxyModel;
 
@@ -66,8 +60,7 @@ public class ProxyController {
             return;
         }
 
-        String rawRequest = HttpMessageFormatter.renderRequest(req);
-        repeaterView.loadRequest(rawRequest);
+        repeaterController.loadRequest(req);
     }
 
     private HttpTransaction getSelectedTransaction() {

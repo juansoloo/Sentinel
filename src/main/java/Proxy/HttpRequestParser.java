@@ -11,9 +11,7 @@ public class HttpRequestParser {
     private static final int HEADER_TERMINATOR = 0x0D0A0D0A;
     private static final int MAX_HEADER_SIZE = 1024 * 1024;
 
-    public HttpRequestParser() {
-
-    }
+    public HttpRequestParser() {}
 
     byte[] readHeaderBytes(InputStream input) throws IOException {
         ByteArrayOutputStream headerBytes = new ByteArrayOutputStream();

@@ -1,7 +1,14 @@
 package MVC.Views;
 
-import javax.swing.*;
-import java.awt.*;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.Font;
+
+import javax.swing.JButton;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTextArea;
 
 public class RepeaterView {
     private final JPanel root;
@@ -12,6 +19,7 @@ public class RepeaterView {
     private JScrollPane requestScrollPane;
     private JScrollPane responseScrollPane;
     private JPanel topBar;
+    private Runnable onSend;
 
     public RepeaterView() {
         root = new JPanel(new BorderLayout());
@@ -35,6 +43,16 @@ public class RepeaterView {
         topBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
         topBar.add(repeaterBtn);
         root.add(topBar, BorderLayout.NORTH);
+
+        repeaterBtn.addActionListener(e -> {
+            if (onSend != null) {
+                onSend.run();
+            }
+        });
+    }
+
+    public String getRequestText() {
+        return requestTextArea.getText();
     }
 
     public void loadRequest(String rawRequest) {
@@ -42,7 +60,16 @@ public class RepeaterView {
         requestTextArea.setCaretPosition(0);
     }
 
+    public void displayResponse(String responseText) {
+        responseTextArea.setText(responseText);
+        responseTextArea.setCaretPosition(0);
+    }
+
     public JPanel getRoot() {
         return root;
+    }
+
+    public void setOnSend(Runnable onSend) {
+        this.onSend = onSend;
     }
 }
