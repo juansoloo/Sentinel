@@ -58,6 +58,7 @@ public class RepeaterView {
     public void loadRequest(String rawRequest) {
         requestTextArea.setText(rawRequest);
         requestTextArea.setCaretPosition(0);
+        displayResponse("");
     }
 
     public void displayResponse(String responseText) {
